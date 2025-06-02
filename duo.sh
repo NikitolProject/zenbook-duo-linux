@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Default backlight (0-3)
 DEFAULT_BACKLIGHT=1
@@ -150,7 +150,7 @@ function duo-set-status() {
 duo-set-status
 
 function duo-set-kb-backlight() {
-    /usr/bin/sudo ${PYTHON3} /tmp/duo/backlight.py ${1} >/dev/null
+    sudo ${PYTHON3} /tmp/duo/backlight.py ${1} >/dev/null
 }
 
 BRIGHTNESS=0
