@@ -30,6 +30,11 @@
                 mutter
                 usbutils
                 inotify-tools
+                sudo
+                glib
+                awk
+                iio-sensor-proxy
+                util-linux
                 (python3.withPackages (py-pkgs: with py-pkgs; [ pyusb ]))
               ];
               wantedBy = [ "multi-user.target" ];
