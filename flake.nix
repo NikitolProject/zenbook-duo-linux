@@ -23,7 +23,7 @@
           default = {
             hardware.sensor.iio.enable = true;
             programs.iio-hyprland.enable = true;
-            systemd.services.lactd = {
+            systemd.services.zenbook-duo-linux = {
               enable = true;
               path = with pkgs; [
                 bash
