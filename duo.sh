@@ -9,7 +9,7 @@ DEFAULT_SCALE=1
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
 
-mkdir -p /tmp/duo
+echo $(pwd)
 
 # SCALE=$(gdctl show |grep Scale: |sed 's/│//g' |awk '{print $2}' |head -n1)
 # if [ -z "${SCALE}" ]; then
@@ -20,7 +20,7 @@ SCALE=${DEFAULT_SCALE}
 # Python embed
 PYTHON3=$(which python3)
 KEYBOARD_DEV=$(lsusb | grep 'Zenbook Duo Keyboard' |awk '{print $6}')
-if [ -n "${KEYBOARD_DEV}" ] && [ ! -f /tmp/duo/backlight.py ]; then
+if [ -n "${KEYBOARD_DEV}" ] && [ ! -f ./backlight.py ]; then
     VENDOR_ID=${KEYBOARD_DEV%:*}
     PRODUCT_ID=${KEYBOARD_DEV#*:}
     echo "#!/usr/bin/env python3
@@ -129,7 +129,7 @@ except usb.core.USBError:
     pass  # Ignore if we can't reattach the driver
 
 sys.exit(0)
-" > /tmp/duo/backlight.py
+" > ./backlight.py
 fi
 
 WIFI_BEFORE=$(nmcli radio wifi)
@@ -150,7 +150,7 @@ function duo-set-status() {
 duo-set-status
 
 function duo-set-kb-backlight() {
-    sudo ${PYTHON3} /tmp/duo/backlight.py ${1} >/dev/null
+    ${PYTHON3} ./backlight.py ${1} >/dev/null
 }
 
 BRIGHTNESS=0
@@ -160,7 +160,7 @@ function duo-sync-display-backlight() {
         CUR_BRIGHTNESS=$(cat /sys/class/backlight/intel_backlight/brightness)
         if [ "${CUR_BRIGHTNESS}" != "${BRIGHTNESS}" ]; then
             BRIGHTNESS=${CUR_BRIGHTNESS}
-            echo "$(date) - DISPLAY - Setting brightness to $(echo ${BRIGHTNESS} |sudo tee /sys/class/backlight/card1-eDP-2-backlight/brightness)"
+            echo "$(date) - DISPLAY - Setting brightness to $(echo ${BRIGHTNESS} | tee /sys/class/backlight/card1-eDP-2-backlight/brightness)"
         fi
     fi
 }

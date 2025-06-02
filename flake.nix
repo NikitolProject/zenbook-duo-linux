@@ -35,6 +35,9 @@
                 gawk
                 iio-sensor-proxy
                 util-linux
+                which
+                networkmanager
+                coreutils-full
                 (python3.withPackages (py-pkgs: with py-pkgs; [ pyusb ]))
               ];
               wantedBy = [ "multi-user.target" ];
