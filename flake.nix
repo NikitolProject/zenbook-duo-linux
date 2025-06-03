@@ -27,7 +27,6 @@
               enable = true;
               path = with pkgs; [
                 bash
-                mutter
                 usbutils
                 inotify-tools
                 sudo
