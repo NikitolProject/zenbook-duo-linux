@@ -233,6 +233,7 @@ function duo-check-monitor() {
         KEYBOARD_ATTACHED=true
     fi
     MONITOR_COUNT=$(sudo -E -u nick hyprctl monitors | grep Monitor --color=none | wc -l)
+    echo "OUTPUT $(sudo -E -u nick hyprctl monitors)"
     duo-set-status
     echo "$(date) - MONITOR - WIFI before: ${WIFI_BEFORE}, Bluetooth before: ${BLUETOOTH_BEFORE}"
     echo "$(date) - MONITOR - Keyboard attached: ${KEYBOARD_ATTACHED}, Monitor count: ${MONITOR_COUNT}"
