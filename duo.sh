@@ -157,7 +157,7 @@ function duo-set-status() {
 duo-set-status
 
 function duo-set-kb-backlight() {
-    ${PYTHON3} "$temp/backlight.py" ${1} >/dev/null
+    ${PYTHON3} "$temp/backlight.py" ${3} >/dev/null
 }
 
 BRIGHTNESS=0
