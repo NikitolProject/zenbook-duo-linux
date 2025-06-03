@@ -228,7 +228,7 @@ function duo-check-monitor() {
     if [ -n "$(lsusb | grep 'Zenbook Duo Keyboard')" ]; then
         KEYBOARD_ATTACHED=true
     fi
-    MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
+    MONITOR_COUNT=$(hyprctl monitors | grep Monitor --color=none | wc -l)
     duo-set-status
     echo "$(date) - MONITOR - WIFI before: ${WIFI_BEFORE}, Bluetooth before: ${BLUETOOTH_BEFORE}"
     echo "$(date) - MONITOR - Keyboard attached: ${KEYBOARD_ATTACHED}, Monitor count: ${MONITOR_COUNT}"
@@ -248,7 +248,7 @@ function duo-check-monitor() {
         fi
         if ((${MONITOR_COUNT} > 1)); then
             echo "$(date) - MONITOR - Disabling bottom monitor"
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1
+            hyprctl keyword monitor eDP-2,disabled
             NEW_MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
             if ((${NEW_MONITOR_COUNT} == 1)); then
                 MESSAGE="Disabled bottom display"
@@ -267,7 +267,7 @@ function duo-check-monitor() {
         rfkill unblock bluetooth
         if ((${MONITOR_COUNT} < 2)); then
             echo "$(date) - MONITOR - Enabling bottom monitor"
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1 --logical-monitor --scale ${SCALE} --monitor eDP-2 --below eDP-1
+            hyprctl keyword monitor eDP-2,highrr,0x1080,1
             NEW_MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
             if ((${NEW_MONITOR_COUNT} == 2)); then
                 MESSAGE="Enabled bottom display"
