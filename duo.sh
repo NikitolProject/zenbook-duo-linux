@@ -7,6 +7,8 @@ DEFAULT_BACKLIGHT=1
 DEFAULT_SCALE=1
 temp=$(mktemp -d)
 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+WAYLAND_DISPLAY=wayland-1
+DISPLAY=:0
 
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
@@ -230,7 +232,7 @@ function duo-check-monitor() {
     if [ -n "$(lsusb | grep 'Zenbook Duo Keyboard')" ]; then
         KEYBOARD_ATTACHED=true
     fi
-    MONITOR_COUNT=$(hyprctl monitors | grep Monitor --color=none | wc -l)
+    MONITOR_COUNT=$(sudo -E -u nick hyprctl monitors | grep Monitor --color=none | wc -l)
     duo-set-status
     echo "$(date) - MONITOR - WIFI before: ${WIFI_BEFORE}, Bluetooth before: ${BLUETOOTH_BEFORE}"
     echo "$(date) - MONITOR - Keyboard attached: ${KEYBOARD_ATTACHED}, Monitor count: ${MONITOR_COUNT}"
@@ -250,14 +252,14 @@ function duo-check-monitor() {
         fi
         if ((${MONITOR_COUNT} > 1)); then
             echo "$(date) - MONITOR - Disabling bottom monitor"
-            hyprctl keyword monitor eDP-2,disabled
+            sudo -E -u nick hyprctl keyword monitor eDP-2,disabled
             NEW_MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
             if ((${NEW_MONITOR_COUNT} == 1)); then
                 MESSAGE="Disabled bottom display"
             else
                 MESSAGE="ERROR: Bottom display still on"
             fi
-            sudo -u nick notify-send -a "Zenbook Duo" -t 1000 --hint=int:transient:1 -i "preferences-desktop-display" "${MESSAGE}"
+            sudo -E -u nick notify-send -a "Zenbook Duo" -t 1000 --hint=int:transient:1 -i "preferences-desktop-display" "${MESSAGE}"
         fi
     else
         echo "$(date) - MONITOR - Keyboard detached"
@@ -269,14 +271,14 @@ function duo-check-monitor() {
         rfkill unblock bluetooth
         if ((${MONITOR_COUNT} < 2)); then
             echo "$(date) - MONITOR - Enabling bottom monitor"
-            hyprctl keyword monitor eDP-2,highrr,0x1080,1
+            sudo -E -u nick hyprctl keyword monitor eDP-2,highrr,0x1080,1
             NEW_MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
             if ((${NEW_MONITOR_COUNT} == 2)); then
                 MESSAGE="Enabled bottom display"
             else
                 MESSAGE="ERROR: Bottom display still off"
             fi
-            sudo -u nick notify-send -a "Zenbook Duo" -t 1000 --hint=int:transient:1 -i "preferences-desktop-display" "${MESSAGE}"
+            sudo -E -u nick notify-send -a "Zenbook Duo" -t 1000 --hint=int:transient:1 -i "preferences-desktop-display" "${MESSAGE}"
         fi
     fi
 }
