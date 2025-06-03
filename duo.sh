@@ -8,7 +8,7 @@ DEFAULT_SCALE=1
 
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
-
+HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000 | tail -n 1)
 echo $(pwd)
 
 # SCALE=$(gdctl show |grep Scale: |sed 's/│//g' |awk '{print $2}' |head -n1)
