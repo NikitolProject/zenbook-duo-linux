@@ -38,6 +38,8 @@
                 which
                 networkmanager
                 coreutils-full
+                libnotify
+                hyprland
                 (python3.withPackages (py-pkgs: with py-pkgs; [ pyusb ]))
               ];
               wantedBy = [ "multi-user.target" ];

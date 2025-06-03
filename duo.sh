@@ -6,6 +6,7 @@ DEFAULT_BACKLIGHT=1
 # Default scale (1-2)
 DEFAULT_SCALE=1
 temp=$(mktemp -d)
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
 
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
@@ -256,7 +257,7 @@ function duo-check-monitor() {
             else
                 MESSAGE="ERROR: Bottom display still on"
             fi
-            notify-send -a "Zenbook Duo" -t 1000 --hint=int:transient:1 -i "preferences-desktop-display" "${MESSAGE}"
+            sudo -u nick notify-send -a "Zenbook Duo" -t 1000 --hint=int:transient:1 -i "preferences-desktop-display" "${MESSAGE}"
         fi
     else
         echo "$(date) - MONITOR - Keyboard detached"
@@ -275,7 +276,7 @@ function duo-check-monitor() {
             else
                 MESSAGE="ERROR: Bottom display still off"
             fi
-            notify-send -a "Zenbook Duo" -t 1000 --hint=int:transient:1 -i "preferences-desktop-display" "${MESSAGE}"
+            sudo -u nick notify-send -a "Zenbook Duo" -t 1000 --hint=int:transient:1 -i "preferences-desktop-display" "${MESSAGE}"
         fi
     fi
 }
