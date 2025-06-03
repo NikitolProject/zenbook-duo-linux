@@ -12,7 +12,7 @@ DISPLAY=:0
 
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
-HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000/hypr | tail -n 1)
+HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1001/hypr | tail -n 1)
 echo $temp
 
 # SCALE=$(gdctl show |grep Scale: |sed 's/│//g' |awk '{print $2}' |head -n1)
