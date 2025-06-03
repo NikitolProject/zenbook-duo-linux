@@ -13,7 +13,7 @@ DISPLAY=:0
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
 HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000 | tail -n 1)
-echo $(pwd)
+echo $temp
 
 # SCALE=$(gdctl show |grep Scale: |sed 's/│//g' |awk '{print $2}' |head -n1)
 # if [ -z "${SCALE}" ]; then
@@ -271,7 +271,7 @@ function duo-check-monitor() {
         rfkill unblock bluetooth
         if ((${MONITOR_COUNT} < 2)); then
             echo "$(date) - MONITOR - Enabling bottom monitor"
-            sudo -E -u nick hyprctl keyword monitor eDP-2,highrr,0x1080,1
+            sudo -E -u nick hyprctl keyword monitor eDP-2,1920x1200@60,0x1200,1
             NEW_MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
             if ((${NEW_MONITOR_COUNT} == 2)); then
                 MESSAGE="Enabled bottom display"
