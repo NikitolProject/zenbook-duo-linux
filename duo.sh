@@ -5,6 +5,7 @@ DEFAULT_BACKLIGHT=1
 
 # Default scale (1-2)
 DEFAULT_SCALE=1
+temp=$(mktemp -d)
 
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
@@ -20,7 +21,7 @@ SCALE=${DEFAULT_SCALE}
 # Python embed
 PYTHON3=$(which python3)
 KEYBOARD_DEV=$(lsusb | grep 'Zenbook Duo Keyboard' |awk '{print $6}')
-if [ -n "${KEYBOARD_DEV}" ] && [ ! -f ./backlight.py ]; then
+if [ -n "${KEYBOARD_DEV}" ] && [ ! -f "$temp/backlight.py" ]; then
     VENDOR_ID=${KEYBOARD_DEV%:*}
     PRODUCT_ID=${KEYBOARD_DEV#*:}
     echo "#!/usr/bin/env python3
@@ -129,7 +130,7 @@ except usb.core.USBError:
     pass  # Ignore if we can't reattach the driver
 
 sys.exit(0)
-" > ./backlight.py
+" > "$temp/backlight.py"
 fi
 
 WIFI_BEFORE=$(nmcli radio wifi)
@@ -145,17 +146,17 @@ function duo-set-status() {
         WIFI_BEFORE=${WIFI_BEFORE}
         KEYBOARD_ATTACHED=${KEYBOARD_ATTACHED}
         MONITOR_COUNT=${MONITOR_COUNT}
-    " > /tmp/duo/status
+    " > "$temp/status"
 }
 duo-set-status
 
 function duo-set-kb-backlight() {
-    ${PYTHON3} ./backlight.py ${1} >/dev/null
+    ${PYTHON3} "$temp/backlight.py" ${1} >/dev/null
 }
 
 BRIGHTNESS=0
 function duo-sync-display-backlight() {
-    . /tmp/duo/status
+    . "$temp/status"
     if [ "${KEYBOARD_ATTACHED}" = false ]; then
         CUR_BRIGHTNESS=$(cat /sys/class/backlight/intel_backlight/brightness)
         if [ "${CUR_BRIGHTNESS}" != "${BRIGHTNESS}" ]; then
@@ -175,7 +176,7 @@ function duo-watch-display-backlight() {
 function duo-watch-wifi() {
     while read -r LINE; do
         sleep 1
-        . /tmp/duo/status
+        . "$temp/status"
         if [ "${KEYBOARD_ATTACHED}" = true ]; then
             if [[ "${LINE}" = *"<true>"* ]]; then
                 WIFI_BEFORE=enabled
@@ -191,7 +192,7 @@ function duo-watch-wifi() {
 function duo-watch-bluetooth() {
     while read -r LINE; do
         sleep 1
-        . /tmp/duo/status
+        . "$temp/status"
         if [ "${KEYBOARD_ATTACHED}" = true ]; then
             if [[ "${LINE}" = *"<true>"* ]]; then
                 BLUETOOTH_BEFORE=unblocked
@@ -208,7 +209,7 @@ function duo-watch-lock() {
     while read -r LINE; do
         sleep 1
         echo "$(date) - DEBUG - ${LINE}"
-        . /tmp/duo/status
+        . "$temp/status"
         if [ "${KEYBOARD_ATTACHED}" = true ]; then
             if [[ "${LINE}" = *"<true>"* ]]; then
                 BLUETOOTH_BEFORE=unblocked
@@ -223,7 +224,7 @@ function duo-watch-lock() {
 }
 
 function duo-check-monitor() {
-    . /tmp/duo/status
+    . "$temp/status"
     KEYBOARD_ATTACHED=false
     if [ -n "$(lsusb | grep 'Zenbook Duo Keyboard')" ]; then
         KEYBOARD_ATTACHED=true
@@ -288,7 +289,7 @@ function duo-watch-monitor() {
 }
 
 function duo-cli() {
-    . /tmp/duo/status
+    . "$temp/status"
     case "${1}" in
     pre|hibernate|shutdown)
         echo "$(date) - ACPI - $@"
@@ -361,10 +362,10 @@ function main() {
 }
 
 if [ -z "${1}" ]; then
-    main | tee -a /tmp/duo/duo.log
+    main | tee -a "$temp/duo.log"
 else
-    duo-cli $@ | tee -a /tmp/duo/duo.log
+    duo-cli $@ | tee -a "$temp/duo.log"
     if [ "${USER}" = root ]; then
-        chmod a+w /tmp/duo /tmp/duo/duo.log /tmp/duo/status
+        chmod a+w "$temp" "$temp/duo.log" "$temp/status"
     fi
 fi
