@@ -235,8 +235,9 @@ function duo-check-monitor() {
     if [ -n "$(lsusb | grep 'Zenbook Duo Keyboard')" ]; then
         KEYBOARD_ATTACHED=true
     fi
-    MONITOR_COUNT=$(sudo -E -u nick hyprctl monitors | grep Monitor --color=none | wc -l)
-    echo "OUTPUT $(sudo -E -u nick hyprctl monitors)"
+    HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1001/hypr | tail -n 1)
+    MONITOR_COUNT=$(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors | grep Monitor --color=none | wc -l)
+    echo "OUTPUT $(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors)"
     duo-set-status
     echo "$(date) - MONITOR - WIFI before: ${WIFI_BEFORE}, Bluetooth before: ${BLUETOOTH_BEFORE}"
     echo "$(date) - MONITOR - Keyboard attached: ${KEYBOARD_ATTACHED}, Monitor count: ${MONITOR_COUNT}"
@@ -256,8 +257,8 @@ function duo-check-monitor() {
         fi
         if ((${MONITOR_COUNT} > 1)); then
             echo "$(date) - MONITOR - Disabling bottom monitor"
-            sudo -E -u nick hyprctl keyword monitor eDP-2,disabled
-            NEW_MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,disabled
+            NEW_MONITOR_COUNT=$(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors | grep Monitor --color=none | wc -l)
             if ((${NEW_MONITOR_COUNT} == 1)); then
                 MESSAGE="Disabled bottom display"
             else
@@ -275,8 +276,8 @@ function duo-check-monitor() {
         rfkill unblock bluetooth
         if ((${MONITOR_COUNT} < 2)); then
             echo "$(date) - MONITOR - Enabling bottom monitor"
-            sudo -E -u nick hyprctl keyword monitor eDP-2,1920x1200@60,0x1200,1
-            NEW_MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,0x1200,1
+            NEW_MONITOR_COUNT=$(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors | grep Monitor --color=none | wc -l)
             if ((${NEW_MONITOR_COUNT} == 2)); then
                 MESSAGE="Enabled bottom display"
             else
@@ -297,6 +298,7 @@ function duo-watch-monitor() {
 
 function duo-cli() {
     . "$temp/status"
+    HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1001/hypr | tail -n 1)
     case "${1}" in
     pre|hibernate|shutdown)
         echo "$(date) - ACPI - $@"
@@ -314,34 +316,38 @@ function duo-cli() {
     left-up)
         echo "$(date) - ROTATE - Left-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1 --transform 90
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1,transform,1
         else
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1 --transform 90 --logical-monitor --scale ${SCALE} --monitor eDP-2 --left-of eDP-1 --transform 90
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,1920x0,1,transform,1
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,0x0,1,transform,1
         fi
 
         ;;
     right-up)
         echo "$(date) - ROTATE - Right-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1 --transform 270
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1,transform,3
         else
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1 --transform 270 --logical-monitor --scale ${SCALE} --monitor eDP-2 --right-of eDP-1 --transform 270
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1,transform,3
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,1920x0,1,transform,3
         fi
         ;;
     bottom-up)
         echo "$(date) - ROTATE - Bottom-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1 --transform 180
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1,transform,2
         else
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1 --transform 180 --logical-monitor --scale ${SCALE} --monitor eDP-2 --above eDP-1 --transform 180
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x1200,1,transform,3
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,0x0,1,transform,3
         fi
         ;;
     normal)
         echo "$(date) - ROTATE - Normal"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1
         else
-            gdctl set --logical-monitor --primary --scale ${SCALE} --monitor eDP-1 --logical-monitor --scale ${SCALE} --monitor eDP-2 --below eDP-1
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,0x1200,1
         fi
         ;;
     *)
