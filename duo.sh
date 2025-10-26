@@ -10,11 +10,33 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
 WAYLAND_DISPLAY=wayland-1
 DISPLAY=:0
 
+# Wait for Hyprland to start
+echo "Waiting for Hyprland to initialize..."
+for i in {1..60}; do
+    HYPR_DIR="/run/user/1000/hypr"
+    if [ -d "$HYPR_DIR" ] && [ -n "$(ls -A "$HYPR_DIR")" ]; then
+        HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art "$HYPR_DIR" | tail -n 1)
+        export HYPRLAND_INSTANCE_SIGNATURE
+        echo "Hyprland is ready. Using instance: $HYPRLAND_INSTANCE_SIGNATURE"
+        break
+    fi
+    sleep 1
+done
+
+if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+    echo "Hyprland did not start within 30 seconds — continuing anyway."
+else
+    echo "$(date) - INIT - Forcing single monitor (eDP-1 only)"
+    sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1
+    sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,disabled
+fi
+
+
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
-HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1001/hypr | tail -n 1)
-echo "test1 $(ls -Art /run/user/1001/hypr | tail -n 1)"
-echo "test2 $(ls -Art /run/user/1001/hypr)"
+HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000/hypr | tail -n 1)
+echo "test1 $(ls -Art /run/user/1000/hypr | tail -n 1)"
+echo "test2 $(ls -Art /run/user/1000/hypr)"
 echo "test3 $(ls /run/user)"
 echo $temp
 
@@ -235,7 +257,7 @@ function duo-check-monitor() {
     if [ -n "$(lsusb | grep 'Zenbook Duo Keyboard')" ]; then
         KEYBOARD_ATTACHED=true
     fi
-    HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1001/hypr | tail -n 1)
+    HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000/hypr | tail -n 1)
     MONITOR_COUNT=$(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors | grep Monitor --color=none | wc -l)
     echo "OUTPUT $(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors)"
     duo-set-status
@@ -300,7 +322,7 @@ function duo-watch-monitor() {
 
 function duo-cli() {
     . "$temp/status"
-    HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1001/hypr | tail -n 1)
+    HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000/hypr | tail -n 1)
     case "${1}" in
     pre|hibernate|shutdown)
         echo "$(date) - ACPI - $@"
@@ -384,3 +406,4 @@ else
         chmod a+w "$temp" "$temp/duo.log" "$temp/status"
     fi
 fi
+
