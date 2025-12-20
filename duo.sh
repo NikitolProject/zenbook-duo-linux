@@ -10,6 +10,11 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
 WAYLAND_DISPLAY=wayland-1
 DISPLAY=:0
 
+# Constants for Asus Zenbook Duo 2024
+VENDOR_ID="0B05"
+USB_PRODUCT_ID="1B2C"
+BT_PRODUCT_ID="1B2D"
+
 # Wait for Hyprland to start
 echo "Waiting for Hyprland to initialize..."
 for i in {1..60}; do
@@ -40,131 +45,188 @@ echo "test2 $(ls -Art /run/user/1000/hypr)"
 echo "test3 $(ls /run/user)"
 echo $temp
 
-# SCALE=$(gdctl show |grep Scale: |sed 's/│//g' |awk '{print $2}' |head -n1)
-# if [ -z "${SCALE}" ]; then
-#     SCALE=1
-# fi
 SCALE=${DEFAULT_SCALE}
 
 # Python embed
 PYTHON3=$(which python3)
-KEYBOARD_DEV=$(lsusb | grep 'Zenbook Duo Keyboard' |awk '{print $6}')
-if [ -n "${KEYBOARD_DEV}" ] && [ ! -f "$temp/backlight.py" ]; then
-    VENDOR_ID=${KEYBOARD_DEV%:*}
-    PRODUCT_ID=${KEYBOARD_DEV#*:}
+
+if [ ! -f "$temp/backlight.py" ]; then
     echo "#!/usr/bin/env python3
 
-# BSD 2-Clause License
-#
-# Copyright (c) 2024, Alesya Huzik
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice, this
-#    list of conditions and the following disclaimer.
-
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 import sys
+import os
+import time
 import usb.core
 import usb.util
+import fcntl
 
 # USB Parameters
-VENDOR_ID = 0x${VENDOR_ID}
-PRODUCT_ID = 0x${PRODUCT_ID}
+USB_VENDOR_ID = 0x${VENDOR_ID}
+USB_PRODUCT_ID = 0x${USB_PRODUCT_ID}
 REPORT_ID = 0x5A
 WVALUE = 0x035A
 WINDEX = 4
 WLENGTH = 16
 
-if len(sys.argv) != 2:
-    print(f\"Usage: {sys.argv[0]} <level>\")
-    sys.exit(1)
+# Bluetooth/HID Parameters
+BT_VENDOR_ID = \"${VENDOR_ID}\"
+BT_PRODUCT_ID = \"${BT_PRODUCT_ID}\"
+TARGET_DRIVER = \"hid-generic\"
 
-try:
-    level = int(sys.argv[1])
-    if level < 0 or level > 3:
-        raise ValueError
-except ValueError:
-    print(\"Invalid level. Must be an integer between 0 and 3.\")
-    sys.exit(1)
+def set_brightness_usb(level):
+    # Find the device
+    dev = usb.core.find(idVendor=USB_VENDOR_ID, idProduct=USB_PRODUCT_ID)
+    if dev is None:
+        return False
 
-# Prepare the data packet
-data = [0] * WLENGTH
-data[0] = REPORT_ID
-data[1] = 0xBA
-data[2] = 0xC5
-data[3] = 0xC4
-data[4] = level
+    print(f\"USB Device found (Vendor ID: 0x{USB_VENDOR_ID:04X}, Product ID: 0x{USB_PRODUCT_ID:04X})\")
 
-# Find the device
-dev = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+    # Prepare the data packet
+    data = [0] * WLENGTH
+    data[0] = REPORT_ID
+    data[1] = 0xBA
+    data[2] = 0xC5
+    data[3] = 0xC4
+    data[4] = level
 
-if dev is None:
-    print(f\"Device not found (Vendor ID: 0x{VENDOR_ID:04X}, Product ID: 0x{PRODUCT_ID:04X})\")
-    sys.exit(1)
+    # Detach kernel driver if necessary
+    if dev.is_kernel_driver_active(WINDEX):
+        try:
+            dev.detach_kernel_driver(WINDEX)
+        except usb.core.USBError as e:
+            print(f\"Could not detach kernel driver: {str(e)}\")
+            return False
 
-# Detach kernel driver if necessary
-if dev.is_kernel_driver_active(WINDEX):
+    # Send the control transfer
     try:
-        dev.detach_kernel_driver(WINDEX)
+        bmRequestType = 0x21  # Host to Device | Class | Interface
+        bRequest = 0x09       # SET_REPORT
+        wValue = WVALUE       # 0x035A
+        wIndex = WINDEX       # Interface number
+        ret = dev.ctrl_transfer(bmRequestType, bRequest, wValue, wIndex, data, timeout=1000)
+        if ret != WLENGTH:
+            print(f\"Warning: Only {ret} bytes sent out of {WLENGTH}.\")
+        else:
+            print(\"Data packet sent successfully via USB.\")
     except usb.core.USBError as e:
-        print(f\"Could not detach kernel driver: {str(e)}\")
+        print(f\"Control transfer failed: {str(e)}\")
+        usb.util.release_interface(dev, WINDEX)
+        return False
+
+    # Release the interface
+    usb.util.release_interface(dev, WINDEX)
+    # Reattach the kernel driver if necessary
+    try:
+        dev.attach_kernel_driver(WINDEX)
+    except usb.core.USBError:
+        pass
+    
+    return True
+
+def find_bt_device_path():
+    base_path = \"/sys/class/hidraw\"
+    if not os.path.exists(base_path):
+        return None
+        
+    for entry in os.listdir(base_path):
+        uevent_path = os.path.join(base_path, entry, \"device\", \"uevent\")
+        if not os.path.exists(uevent_path):
+            continue
+            
+        try:
+            with open(uevent_path, \"r\") as f:
+                content = f.read()
+            
+            props = {}
+            for line in content.splitlines():
+                if \"=\" in line:
+                    k, v = line.split(\"=\", 1)
+                    props[k] = v
+            
+            hid_id = props.get(\"HID_ID\", \"\")
+            driver = props.get(\"DRIVER\", \"\")
+            
+            parts = hid_id.split(\":\")
+            if len(parts) == 3:
+                # HID_ID is BUS:VENDOR:PRODUCT.
+                vid_str = parts[1].upper()
+                pid_str = parts[2].upper()
+                
+                target_vid = BT_VENDOR_ID.upper()
+                target_pid = BT_PRODUCT_ID.upper()
+                
+                if target_vid in vid_str and target_pid in pid_str and driver == TARGET_DRIVER:
+                    return f\"/dev/{entry}\"
+        except Exception:
+            continue
+    return None
+
+def set_brightness_bt(level):
+    device_path = find_bt_device_path()
+    if not device_path:
+        return False
+        
+    print(f\"Bluetooth Device found at {device_path}\")
+    
+    data = [0xBA, 0xC5, 0xC4, level] + [0] * 11
+    buf = bytearray([0x5A]) + bytearray(data)
+    
+    try:
+        fd = os.open(device_path, os.O_RDWR)
+        op = 0xC0004806 | (len(buf) << 16)
+        fcntl.ioctl(fd, op, buf)
+        print(\"Data packet sent successfully via Bluetooth.\")
+        os.close(fd)
+        return True
+    except Exception as e:
+        print(f\"Error sending via Bluetooth: {e}\")
+        return False
+
+if __name__ == \"__main__\":
+    if len(sys.argv) < 2:
+        print(f\"Usage: {sys.argv[0]} <level> [wait_for_bt]\")
         sys.exit(1)
 
-# try:
-#     dev.set_configuration()
-#     usb.util.claim_interface(dev, WINDEX)
-# except usb.core.USBError as e:
-#     print(f\"Could not set configuration or claim interface: {str(e)}\")
-#     sys.exit(1)
+    try:
+        level = int(sys.argv[1])
+        level = max(0, min(3, level))
+    except ValueError:
+        print(\"Invalid level.\")
+        sys.exit(1)
+        
+    wait_for_bt = False
+    if len(sys.argv) > 2 and sys.argv[2] == \"wait\":
+        wait_for_bt = True
 
-# Send the control transfer
-try:
-    bmRequestType = 0x21  # Host to Device | Class | Interface
-    bRequest = 0x09       # SET_REPORT
-    wValue = WVALUE       # 0x035A
-    wIndex = WINDEX       # Interface number
-    ret = dev.ctrl_transfer(bmRequestType, bRequest, wValue, wIndex, data, timeout=1000)
-    if ret != WLENGTH:
-        print(f\"Warning: Only {ret} bytes sent out of {WLENGTH}.\")
-    else:
-        print(\"Data packet sent successfully.\")
-except usb.core.USBError as e:
-    print(f\"Control transfer failed: {str(e)}\")
-    usb.util.release_interface(dev, WINDEX)
+    # Try USB first
+    if set_brightness_usb(level):
+        sys.exit(0)
+        
+    # If USB failed, try Bluetooth
+    if set_brightness_bt(level):
+        sys.exit(0)
+        
+    # If both failed and we are asked to wait for Bluetooth
+    if wait_for_bt:
+        print(\"Waiting for Bluetooth device...\")
+        # Wait up to 30 seconds
+        for i in range(30):
+            time.sleep(1)
+            if set_brightness_bt(level):
+                sys.exit(0)
+        print(\"Timed out waiting for Bluetooth device.\")
+        sys.exit(1)
+    
+    print(\"No compatible device found.\")
     sys.exit(1)
-
-# Release the interface
-usb.util.release_interface(dev, WINDEX)
-# Reattach the kernel driver if necessary
-try:
-    dev.attach_kernel_driver(WINDEX)
-except usb.core.USBError:
-    pass  # Ignore if we can't reattach the driver
-
-sys.exit(0)
 " > "$temp/backlight.py"
 fi
 
 WIFI_BEFORE=$(nmcli radio wifi)
 BLUETOOTH_BEFORE=$(rfkill -n -o SOFT list bluetooth |head -n1)
 KEYBOARD_ATTACHED=false
-if [ -n "$(lsusb | grep 'Zenbook Duo Keyboard')" ]; then
+# Check for USB device with specific ID
+if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
     KEYBOARD_ATTACHED=true
 fi
 MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
@@ -179,7 +241,8 @@ function duo-set-status() {
 duo-set-status
 
 function duo-set-kb-backlight() {
-    ${PYTHON3} "$temp/backlight.py" ${1} >/dev/null
+    # $1: level, $2: optional "wait"
+    ${PYTHON3} "$temp/backlight.py" ${1} ${2} >/dev/null &
 }
 
 BRIGHTNESS=0
@@ -254,7 +317,7 @@ function duo-watch-lock() {
 function duo-check-monitor() {
     . "$temp/status"
     KEYBOARD_ATTACHED=false
-    if [ -n "$(lsusb | grep 'Zenbook Duo Keyboard')" ]; then
+    if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
         KEYBOARD_ATTACHED=true
     fi
     HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000/hypr | tail -n 1)
@@ -290,6 +353,11 @@ function duo-check-monitor() {
         fi
     else
         echo "$(date) - MONITOR - Keyboard detached"
+        
+        # Trigger backlight set with wait for Bluetooth
+        echo "$(date) - MONITOR - Waiting for Bluetooth keyboard to connect..."
+        duo-set-kb-backlight ${DEFAULT_BACKLIGHT} "wait"
+        
         if [ "${WIFI_BEFORE}" = enabled ]; then
             echo "$(date) - MONITOR - Turning on WIFI"
             nmcli radio wifi on
@@ -371,7 +439,7 @@ function duo-cli() {
             sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1
         else
             sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,0x1200,1
+            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,1200x0,1
         fi
         ;;
     *)
@@ -406,4 +474,3 @@ else
         chmod a+w "$temp" "$temp/duo.log" "$temp/status"
     fi
 fi
-
