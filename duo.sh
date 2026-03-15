@@ -333,9 +333,23 @@ function duo-set-micmute-led() {
     fi
 }
 
+function duo-find-mic-id() {
+    sudo -E -u nick XDG_RUNTIME_DIR=/run/user/1000 ${WPCTL} status 2>/dev/null \
+        | sed -n '/Sources:/,/Filters:/p' \
+        | grep "Digital Microphone" \
+        | sed 's/[^0-9]*\([0-9][0-9]*\)\..*/\1/' \
+        | head -n1
+}
+
 function duo-sync-micmute-led() {
+    local mic_id
+    mic_id=$(duo-find-mic-id)
+    if [ -z "$mic_id" ]; then
+        echo "$(date) - MICMUTE - Digital Microphone not found"
+        return
+    fi
     local muted
-    muted=$(sudo -E -u nick XDG_RUNTIME_DIR=/run/user/1000 ${WPCTL} get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null)
+    muted=$(sudo -E -u nick XDG_RUNTIME_DIR=/run/user/1000 ${WPCTL} get-volume "$mic_id" 2>/dev/null)
     if echo "$muted" | grep -q MUTED; then
         duo-set-micmute-led on
     else
@@ -346,9 +360,25 @@ function duo-sync-micmute-led() {
 function duo-watch-micmute() {
     echo "$(date) - MICMUTE - Watching mic mute state"
     local LAST_STATE=""
+    local mic_id=""
     while true; do
+        # Re-discover mic ID periodically (it can change after sleep/resume)
+        if [ -z "$mic_id" ]; then
+            mic_id=$(duo-find-mic-id)
+            if [ -z "$mic_id" ]; then
+                sleep 2
+                continue
+            fi
+            echo "$(date) - MICMUTE - Found Digital Microphone, ID: $mic_id"
+        fi
         local muted
-        muted=$(sudo -E -u nick XDG_RUNTIME_DIR=/run/user/1000 ${WPCTL} get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null)
+        muted=$(sudo -E -u nick XDG_RUNTIME_DIR=/run/user/1000 ${WPCTL} get-volume "$mic_id" 2>/dev/null)
+        if [ -z "$muted" ]; then
+            # Mic disappeared, reset and re-discover
+            mic_id=""
+            LAST_STATE=""
+            continue
+        fi
         local CUR_STATE="unmuted"
         if echo "$muted" | grep -q MUTED; then
             CUR_STATE="muted"
