@@ -8,41 +8,36 @@ DEFAULT_SCALE=1
 temp=$(mktemp -d)
 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
 WAYLAND_DISPLAY=wayland-1
-DISPLAY=:0
 
 # Constants for Asus Zenbook Duo 2024
 VENDOR_ID="0B05"
 USB_PRODUCT_ID="1B2C"
 BT_PRODUCT_ID="1B2D"
 
-# Wait for Hyprland to start
-echo "Waiting for Hyprland to initialize..."
+# Wait for Niri to start
+echo "Waiting for Niri to initialize..."
 for i in {1..60}; do
-    HYPR_DIR="/run/user/1000/hypr"
-    if [ -d "$HYPR_DIR" ] && [ -n "$(ls -A "$HYPR_DIR")" ]; then
-        HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art "$HYPR_DIR" | tail -n 1)
-        export HYPRLAND_INSTANCE_SIGNATURE
-        echo "Hyprland is ready. Using instance: $HYPRLAND_INSTANCE_SIGNATURE"
+    if niri msg version >/dev/null 2>&1; then
+        echo "Niri is ready."
         break
     fi
     sleep 1
 done
 
-if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
-    echo "Hyprland did not start within 30 seconds — continuing anyway."
+if ! niri msg version >/dev/null 2>&1; then
+    echo "Niri did not start within 60 seconds — continuing anyway."
 else
     echo "$(date) - INIT - Forcing single monitor (eDP-1 only)"
-    sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1
-    sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,disabled
+    niri msg output eDP-1 on
+    niri msg output eDP-1 mode 1920x1200@60.003
+    niri msg output eDP-1 scale ${DEFAULT_SCALE}
+    niri msg output eDP-1 position set 0 0
+    niri msg output eDP-2 off
 fi
 
 
 # Capture Ctrl+C and close any subprocesses such as duo-watch-monitor
 trap 'echo "Ctrl+C captured. Exiting..."; pkill -P $$; exit 1' INT
-HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000/hypr | tail -n 1)
-echo "test1 $(ls -Art /run/user/1000/hypr | tail -n 1)"
-echo "test2 $(ls -Art /run/user/1000/hypr)"
-echo "test3 $(ls /run/user)"
 echo $temp
 
 SCALE=${DEFAULT_SCALE}
@@ -120,41 +115,41 @@ def set_brightness_usb(level):
         dev.attach_kernel_driver(WINDEX)
     except usb.core.USBError:
         pass
-    
+
     return True
 
 def find_bt_device_path():
     base_path = \"/sys/class/hidraw\"
     if not os.path.exists(base_path):
         return None
-        
+
     for entry in os.listdir(base_path):
         uevent_path = os.path.join(base_path, entry, \"device\", \"uevent\")
         if not os.path.exists(uevent_path):
             continue
-            
+
         try:
             with open(uevent_path, \"r\") as f:
                 content = f.read()
-            
+
             props = {}
             for line in content.splitlines():
                 if \"=\" in line:
                     k, v = line.split(\"=\", 1)
                     props[k] = v
-            
+
             hid_id = props.get(\"HID_ID\", \"\")
             driver = props.get(\"DRIVER\", \"\")
-            
+
             parts = hid_id.split(\":\")
             if len(parts) == 3:
                 # HID_ID is BUS:VENDOR:PRODUCT.
                 vid_str = parts[1].upper()
                 pid_str = parts[2].upper()
-                
+
                 target_vid = BT_VENDOR_ID.upper()
                 target_pid = BT_PRODUCT_ID.upper()
-                
+
                 if target_vid in vid_str and target_pid in pid_str and driver == TARGET_DRIVER:
                     return f\"/dev/{entry}\"
         except Exception:
@@ -165,12 +160,12 @@ def set_brightness_bt(level):
     device_path = find_bt_device_path()
     if not device_path:
         return False
-        
+
     print(f\"Bluetooth Device found at {device_path}\")
-    
+
     data = [0xBA, 0xC5, 0xC4, level] + [0] * 11
     buf = bytearray([0x5A]) + bytearray(data)
-    
+
     try:
         fd = os.open(device_path, os.O_RDWR)
         op = 0xC0004806 | (len(buf) << 16)
@@ -193,7 +188,7 @@ if __name__ == \"__main__\":
     except ValueError:
         print(\"Invalid level.\")
         sys.exit(1)
-        
+
     wait_for_bt = False
     if len(sys.argv) > 2 and sys.argv[2] == \"wait\":
         wait_for_bt = True
@@ -201,11 +196,11 @@ if __name__ == \"__main__\":
     # Try USB first
     if set_brightness_usb(level):
         sys.exit(0)
-        
+
     # If USB failed, try Bluetooth
     if set_brightness_bt(level):
         sys.exit(0)
-        
+
     # If both failed and we are asked to wait for Bluetooth
     if wait_for_bt:
         print(\"Waiting for Bluetooth device...\")
@@ -216,7 +211,7 @@ if __name__ == \"__main__\":
                 sys.exit(0)
         print(\"Timed out waiting for Bluetooth device.\")
         sys.exit(1)
-    
+
     print(\"No compatible device found.\")
     sys.exit(1)
 " > "$temp/backlight.py"
@@ -229,7 +224,7 @@ KEYBOARD_ATTACHED=false
 if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
     KEYBOARD_ATTACHED=true
 fi
-MONITOR_COUNT=$(gdctl show | grep 'Logical monitor #' | wc -l)
+MONITOR_COUNT=$(niri msg -j outputs | jq '[.[] | select(.logical != null)] | length')
 function duo-set-status() {
     echo "
         BLUETOOTH_BEFORE=${BLUETOOTH_BEFORE}
@@ -320,9 +315,8 @@ function duo-check-monitor() {
     if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
         KEYBOARD_ATTACHED=true
     fi
-    HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000/hypr | tail -n 1)
-    MONITOR_COUNT=$(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors | grep Monitor --color=none | wc -l)
-    echo "OUTPUT $(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors)"
+    MONITOR_COUNT=$(niri msg -j outputs | jq '[.[] | select(.logical != null)] | length')
+    echo "OUTPUT $(niri msg outputs)"
     duo-set-status
     echo "$(date) - MONITOR - WIFI before: ${WIFI_BEFORE}, Bluetooth before: ${BLUETOOTH_BEFORE}"
     echo "$(date) - MONITOR - Keyboard attached: ${KEYBOARD_ATTACHED}, Monitor count: ${MONITOR_COUNT}"
@@ -342,8 +336,8 @@ function duo-check-monitor() {
         fi
         if ((${MONITOR_COUNT} > 1)); then
             echo "$(date) - MONITOR - Disabling bottom monitor"
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,disabled
-            NEW_MONITOR_COUNT=$(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors | grep Monitor --color=none | wc -l)
+            niri msg output eDP-2 off
+            NEW_MONITOR_COUNT=$(niri msg -j outputs | jq '[.[] | select(.logical != null)] | length')
             if ((${NEW_MONITOR_COUNT} == 1)); then
                 MESSAGE="Disabled bottom display"
             else
@@ -353,11 +347,11 @@ function duo-check-monitor() {
         fi
     else
         echo "$(date) - MONITOR - Keyboard detached"
-        
+
         # Trigger backlight set with wait for Bluetooth
         echo "$(date) - MONITOR - Waiting for Bluetooth keyboard to connect..."
         duo-set-kb-backlight ${DEFAULT_BACKLIGHT} "wait"
-        
+
         if [ "${WIFI_BEFORE}" = enabled ]; then
             echo "$(date) - MONITOR - Turning on WIFI"
             nmcli radio wifi on
@@ -366,10 +360,13 @@ function duo-check-monitor() {
         rfkill unblock bluetooth
         if ((${MONITOR_COUNT} < 2)); then
             echo "$(date) - MONITOR - Enabling bottom monitor"
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,0x1200,1
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl dispatch workspace 11
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl dispatch movecurrentworkspacetomonitor eDP-2
-            NEW_MONITOR_COUNT=$(sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl monitors | grep Monitor --color=none | wc -l)
+            niri msg output eDP-2 on
+            niri msg output eDP-2 mode 1920x1200@60.003
+            niri msg output eDP-2 scale ${DEFAULT_SCALE}
+            niri msg output eDP-2 position set 0 1200
+            niri msg action focus-workspace 11
+            niri msg action move-workspace-to-monitor-down
+            NEW_MONITOR_COUNT=$(niri msg -j outputs | jq '[.[] | select(.logical != null)] | length')
             if ((${NEW_MONITOR_COUNT} == 2)); then
                 MESSAGE="Enabled bottom display"
             else
@@ -390,7 +387,6 @@ function duo-watch-monitor() {
 
 function duo-cli() {
     . "$temp/status"
-    HYPRLAND_INSTANCE_SIGNATURE=$(ls -Art /run/user/1000/hypr | tail -n 1)
     case "${1}" in
     pre|hibernate|shutdown)
         echo "$(date) - ACPI - $@"
@@ -408,38 +404,46 @@ function duo-cli() {
     left-up)
         echo "$(date) - ROTATE - Left-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1,transform,1
+            niri msg output eDP-1 transform 90
         else
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,1200x0,1,transform,1
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,0x0,1,transform,1
+            niri msg output eDP-1 transform 90
+            niri msg output eDP-1 position set 1200 0
+            niri msg output eDP-2 transform 90
+            niri msg output eDP-2 position set 0 0
         fi
-
         ;;
     right-up)
         echo "$(date) - ROTATE - Right-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1,transform,3
+            niri msg output eDP-1 transform 270
         else
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1,transform,3
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,1200x0,1,transform,3
+            niri msg output eDP-1 transform 270
+            niri msg output eDP-1 position set 0 0
+            niri msg output eDP-2 transform 270
+            niri msg output eDP-2 position set 1200 0
         fi
         ;;
     bottom-up)
         echo "$(date) - ROTATE - Bottom-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1,transform,2
+            niri msg output eDP-1 transform 180
         else
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x1200,1,transform,3
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,0x0,1,transform,3
+            niri msg output eDP-1 transform 270
+            niri msg output eDP-1 position set 0 1200
+            niri msg output eDP-2 transform 270
+            niri msg output eDP-2 position set 0 0
         fi
         ;;
     normal)
         echo "$(date) - ROTATE - Normal"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1
+            niri msg output eDP-1 transform normal
+            niri msg output eDP-1 position set 0 0
         else
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-1,1920x1200@60,0x0,1
-            sudo -u nick HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE hyprctl keyword monitor eDP-2,1920x1200@60,1200x0,1
+            niri msg output eDP-1 transform normal
+            niri msg output eDP-1 position set 0 0
+            niri msg output eDP-2 transform normal
+            niri msg output eDP-2 position set 0 1200
         fi
         ;;
     *)

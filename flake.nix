@@ -22,7 +22,6 @@
         {
           default = {
             hardware.sensor.iio.enable = true;
-            programs.iio-hyprland.enable = true;
             systemd.services.zenbook-duo-linux = {
               enable = true;
               path = with pkgs; [
@@ -38,7 +37,8 @@
                 networkmanager
                 coreutils-full
                 libnotify
-                hyprland
+                niri
+                jq
                 (python3.withPackages (py-pkgs: with py-pkgs; [ pyusb ]))
               ];
               wantedBy = [ "multi-user.target" ];
