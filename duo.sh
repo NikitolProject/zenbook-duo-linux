@@ -192,13 +192,80 @@ def set_brightness_bt(level):
         print(f\"Error sending via Bluetooth: {e}\")
         return False
 
-if __name__ == \"__main__\":
-    if len(sys.argv) < 2:
-        print(f\"Usage: {sys.argv[0]} <level> [wait_for_bt]\")
-        sys.exit(1)
+def set_micmute_led_usb(state):
+    dev = usb.core.find(idVendor=USB_VENDOR_ID, idProduct=USB_PRODUCT_ID)
+    if dev is None:
+        return False
+
+    data = [0] * WLENGTH
+    data[0] = REPORT_ID
+    data[1] = 0xD0
+    data[2] = 0x7C
+    data[3] = 1 if state else 0
+
+    if dev.is_kernel_driver_active(WINDEX):
+        try:
+            dev.detach_kernel_driver(WINDEX)
+        except usb.core.USBError as e:
+            print(f\"Could not detach kernel driver: {str(e)}\")
+            return False
 
     try:
-        level = int(sys.argv[1])
+        bmRequestType = 0x21
+        bRequest = 0x09
+        ret = dev.ctrl_transfer(bmRequestType, bRequest, WVALUE, WINDEX, data, timeout=1000)
+        print(f\"Mic mute LED {'ON' if state else 'OFF'} via USB.\")
+    except usb.core.USBError as e:
+        print(f\"Control transfer failed: {str(e)}\")
+        usb.util.release_interface(dev, WINDEX)
+        return False
+
+    usb.util.release_interface(dev, WINDEX)
+    try:
+        dev.attach_kernel_driver(WINDEX)
+    except usb.core.USBError:
+        pass
+    return True
+
+def set_micmute_led_bt(state):
+    device_path = find_bt_device_path()
+    if not device_path:
+        return False
+
+    data = [0xD0, 0x7C, (1 if state else 0)] + [0] * 12
+    buf = bytearray([0x5A]) + bytearray(data)
+
+    try:
+        fd = os.open(device_path, os.O_RDWR)
+        op = 0xC0004806 | (len(buf) << 16)
+        fcntl.ioctl(fd, op, buf)
+        print(f\"Mic mute LED {'ON' if state else 'OFF'} via Bluetooth.\")
+        os.close(fd)
+        return True
+    except Exception as e:
+        print(f\"Error sending mic mute LED via Bluetooth: {e}\")
+        return False
+
+if __name__ == \"__main__\":
+    if len(sys.argv) < 2:
+        print(f\"Usage: {sys.argv[0]} <level|micmute_on|micmute_off> [wait_for_bt]\")
+        sys.exit(1)
+
+    cmd = sys.argv[1]
+
+    # Mic mute LED commands
+    if cmd in (\"micmute_on\", \"micmute_off\"):
+        state = cmd == \"micmute_on\"
+        if set_micmute_led_usb(state):
+            sys.exit(0)
+        if set_micmute_led_bt(state):
+            sys.exit(0)
+        print(\"No compatible device found for mic mute LED.\")
+        sys.exit(1)
+
+    # Backlight commands
+    try:
+        level = int(cmd)
         level = max(0, min(3, level))
     except ValueError:
         print(\"Invalid level.\")
@@ -253,6 +320,51 @@ duo-set-status
 function duo-set-kb-backlight() {
     # $1: level, $2: optional "wait"
     ${PYTHON3} "$temp/backlight.py" ${1} ${2} >/dev/null &
+}
+
+WPCTL="/run/current-system/sw/bin/wpctl"
+
+function duo-set-micmute-led() {
+    # $1: "on" or "off"
+    if [ "${1}" = "on" ]; then
+        ${PYTHON3} "$temp/backlight.py" micmute_on >/dev/null &
+    else
+        ${PYTHON3} "$temp/backlight.py" micmute_off >/dev/null &
+    fi
+}
+
+function duo-sync-micmute-led() {
+    local muted
+    muted=$(sudo -E -u nick XDG_RUNTIME_DIR=/run/user/1000 ${WPCTL} get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null)
+    if echo "$muted" | grep -q MUTED; then
+        duo-set-micmute-led on
+    else
+        duo-set-micmute-led off
+    fi
+}
+
+function duo-watch-micmute() {
+    echo "$(date) - MICMUTE - Watching mic mute state"
+    local LAST_STATE=""
+    while true; do
+        local muted
+        muted=$(sudo -E -u nick XDG_RUNTIME_DIR=/run/user/1000 ${WPCTL} get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null)
+        local CUR_STATE="unmuted"
+        if echo "$muted" | grep -q MUTED; then
+            CUR_STATE="muted"
+        fi
+        if [ "${CUR_STATE}" != "${LAST_STATE}" ]; then
+            LAST_STATE="${CUR_STATE}"
+            if [ "${CUR_STATE}" = "muted" ]; then
+                echo "$(date) - MICMUTE - Mic muted, LED ON"
+                duo-set-micmute-led on
+            else
+                echo "$(date) - MICMUTE - Mic unmuted, LED OFF"
+                duo-set-micmute-led off
+            fi
+        fi
+        sleep 0.5
+    done
 }
 
 BRIGHTNESS=0
@@ -339,6 +451,7 @@ function duo-check-monitor() {
     if [ ${KEYBOARD_ATTACHED} = true ]; then
         echo "$(date) - MONITOR - Keyboard attached"
         duo-set-kb-backlight ${DEFAULT_BACKLIGHT}
+        duo-sync-micmute-led
         if [ "${WIFI_BEFORE}" = enabled ]; then
             echo "$(date) - MONITOR - Turning on WIFI"
             nmcli radio wifi on
@@ -367,6 +480,7 @@ function duo-check-monitor() {
         # Trigger backlight set with wait for Bluetooth
         echo "$(date) - MONITOR - Waiting for Bluetooth keyboard to connect..."
         duo-set-kb-backlight ${DEFAULT_BACKLIGHT} "wait"
+        duo-sync-micmute-led
 
         if [ "${WIFI_BEFORE}" = enabled ]; then
             echo "$(date) - MONITOR - Turning on WIFI"
@@ -487,11 +601,13 @@ function duo-watch-rotate() {
 
 function main() {
     duo-set-kb-backlight ${DEFAULT_BACKLIGHT}
+    duo-sync-micmute-led
     duo-check-monitor
     duo-watch-monitor &
     duo-watch-rotate &
     duo-watch-display-backlight &
     duo-watch-wifi &
+    duo-watch-micmute &
     duo-watch-bluetooth
 }
 
