@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Use system niri binary (matches running compositor version)
-export PATH="/run/current-system/sw/bin:$PATH"
+# Do NOT prepend to PATH globally — it would shadow nix-packaged python3 (with pyusb)
+NIRI_BIN="/run/current-system/sw/bin/niri"
 
 # Default backlight (0-3)
 DEFAULT_BACKLIGHT=3
@@ -31,22 +32,22 @@ function find-niri-socket() {
 # Wait for Niri to start
 echo "Waiting for Niri to initialize..."
 for i in {1..60}; do
-    if find-niri-socket && niri msg version >/dev/null 2>&1; then
+    if find-niri-socket && $NIRI_BIN msg version >/dev/null 2>&1; then
         echo "Niri is ready. Socket: $NIRI_SOCKET"
         break
     fi
     sleep 1
 done
 
-if ! niri msg version >/dev/null 2>&1; then
+if ! $NIRI_BIN msg version >/dev/null 2>&1; then
     echo "Niri did not start within 60 seconds — continuing anyway."
 else
     echo "$(date) - INIT - Forcing single monitor (eDP-1 only)"
-    niri msg output eDP-1 on
-    niri msg output eDP-1 mode 1920x1200@60.003
-    niri msg output eDP-1 scale ${DEFAULT_SCALE}
-    niri msg output eDP-1 position set 0 0
-    niri msg output eDP-2 off
+    $NIRI_BIN msg output eDP-1 on
+    $NIRI_BIN msg output eDP-1 mode 1920x1200@60.003
+    $NIRI_BIN msg output eDP-1 scale ${DEFAULT_SCALE}
+    $NIRI_BIN msg output eDP-1 position set 0 0
+    $NIRI_BIN msg output eDP-2 off
 fi
 
 
@@ -238,7 +239,7 @@ KEYBOARD_ATTACHED=false
 if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
     KEYBOARD_ATTACHED=true
 fi
-MONITOR_COUNT=$(niri msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
+MONITOR_COUNT=$($NIRI_BIN msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
 function duo-set-status() {
     echo "
         BLUETOOTH_BEFORE=${BLUETOOTH_BEFORE}
@@ -330,8 +331,8 @@ function duo-check-monitor() {
     if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
         KEYBOARD_ATTACHED=true
     fi
-    MONITOR_COUNT=$(niri msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
-    echo "OUTPUT $(niri msg outputs)"
+    MONITOR_COUNT=$($NIRI_BIN msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
+    echo "OUTPUT $($NIRI_BIN msg outputs)"
     duo-set-status
     echo "$(date) - MONITOR - WIFI before: ${WIFI_BEFORE}, Bluetooth before: ${BLUETOOTH_BEFORE}"
     echo "$(date) - MONITOR - Keyboard attached: ${KEYBOARD_ATTACHED}, Monitor count: ${MONITOR_COUNT}"
@@ -351,8 +352,8 @@ function duo-check-monitor() {
         fi
         if ((${MONITOR_COUNT} > 1)); then
             echo "$(date) - MONITOR - Disabling bottom monitor"
-            niri msg output eDP-2 off
-            NEW_MONITOR_COUNT=$(niri msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
+            $NIRI_BIN msg output eDP-2 off
+            NEW_MONITOR_COUNT=$($NIRI_BIN msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
             if ((${NEW_MONITOR_COUNT} == 1)); then
                 MESSAGE="Disabled bottom display"
             else
@@ -375,13 +376,13 @@ function duo-check-monitor() {
         rfkill unblock bluetooth
         if ((${MONITOR_COUNT} < 2)); then
             echo "$(date) - MONITOR - Enabling bottom monitor"
-            niri msg output eDP-2 on
-            niri msg output eDP-2 mode 1920x1200@60.003
-            niri msg output eDP-2 scale ${DEFAULT_SCALE}
-            niri msg output eDP-2 position set 0 1200
-            niri msg action focus-workspace 11
-            niri msg action move-workspace-to-monitor-down
-            NEW_MONITOR_COUNT=$(niri msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
+            $NIRI_BIN msg output eDP-2 on
+            $NIRI_BIN msg output eDP-2 mode 1920x1200@60.003
+            $NIRI_BIN msg output eDP-2 scale ${DEFAULT_SCALE}
+            $NIRI_BIN msg output eDP-2 position set 0 1200
+            $NIRI_BIN msg action focus-workspace 11
+            $NIRI_BIN msg action move-workspace-to-monitor-down
+            NEW_MONITOR_COUNT=$($NIRI_BIN msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
             if ((${NEW_MONITOR_COUNT} == 2)); then
                 MESSAGE="Enabled bottom display"
             else
@@ -420,46 +421,54 @@ function duo-cli() {
     left-up)
         echo "$(date) - ROTATE - Left-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            niri msg output eDP-1 transform 90
+            $NIRI_BIN msg output eDP-1 transform 90
         else
-            niri msg output eDP-1 transform 90
-            niri msg output eDP-1 position set 1200 0
-            niri msg output eDP-2 transform 90
-            niri msg output eDP-2 position set 0 0
+            $NIRI_BIN msg output eDP-2 off
+            $NIRI_BIN msg output eDP-1 transform 90
+            $NIRI_BIN msg output eDP-1 position set 1200 0
+            $NIRI_BIN msg output eDP-2 on
+            $NIRI_BIN msg output eDP-2 transform 90
+            $NIRI_BIN msg output eDP-2 position set 0 0
         fi
         ;;
     right-up)
         echo "$(date) - ROTATE - Right-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            niri msg output eDP-1 transform 270
+            $NIRI_BIN msg output eDP-1 transform 270
         else
-            niri msg output eDP-1 transform 270
-            niri msg output eDP-1 position set 0 0
-            niri msg output eDP-2 transform 270
-            niri msg output eDP-2 position set 1200 0
+            $NIRI_BIN msg output eDP-2 off
+            $NIRI_BIN msg output eDP-1 transform 270
+            $NIRI_BIN msg output eDP-1 position set 0 0
+            $NIRI_BIN msg output eDP-2 on
+            $NIRI_BIN msg output eDP-2 transform 270
+            $NIRI_BIN msg output eDP-2 position set 1200 0
         fi
         ;;
     bottom-up)
         echo "$(date) - ROTATE - Bottom-up"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            niri msg output eDP-1 transform 180
+            $NIRI_BIN msg output eDP-1 transform 180
         else
-            niri msg output eDP-1 transform 270
-            niri msg output eDP-1 position set 0 1200
-            niri msg output eDP-2 transform 270
-            niri msg output eDP-2 position set 0 0
+            $NIRI_BIN msg output eDP-2 off
+            $NIRI_BIN msg output eDP-1 transform 270
+            $NIRI_BIN msg output eDP-1 position set 0 1200
+            $NIRI_BIN msg output eDP-2 on
+            $NIRI_BIN msg output eDP-2 transform 270
+            $NIRI_BIN msg output eDP-2 position set 0 0
         fi
         ;;
     normal)
         echo "$(date) - ROTATE - Normal"
         if [ ${KEYBOARD_ATTACHED} = true ]; then
-            niri msg output eDP-1 transform normal
-            niri msg output eDP-1 position set 0 0
+            $NIRI_BIN msg output eDP-1 transform normal
+            $NIRI_BIN msg output eDP-1 position set 0 0
         else
-            niri msg output eDP-1 transform normal
-            niri msg output eDP-1 position set 0 0
-            niri msg output eDP-2 transform normal
-            niri msg output eDP-2 position set 0 1200
+            $NIRI_BIN msg output eDP-2 off
+            $NIRI_BIN msg output eDP-1 transform normal
+            $NIRI_BIN msg output eDP-1 position set 0 0
+            $NIRI_BIN msg output eDP-2 on
+            $NIRI_BIN msg output eDP-2 transform normal
+            $NIRI_BIN msg output eDP-2 position set 0 1200
         fi
         ;;
     *)
