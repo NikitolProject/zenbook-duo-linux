@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Use system niri binary (matches running compositor version)
+export PATH="/run/current-system/sw/bin:$PATH"
+
 # Default backlight (0-3)
 DEFAULT_BACKLIGHT=3
 
@@ -235,7 +238,7 @@ KEYBOARD_ATTACHED=false
 if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
     KEYBOARD_ATTACHED=true
 fi
-MONITOR_COUNT=$(niri msg -j outputs | jq '[.[] | select(.logical != null)] | length')
+MONITOR_COUNT=$(niri msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
 function duo-set-status() {
     echo "
         BLUETOOTH_BEFORE=${BLUETOOTH_BEFORE}
@@ -327,7 +330,7 @@ function duo-check-monitor() {
     if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
         KEYBOARD_ATTACHED=true
     fi
-    MONITOR_COUNT=$(niri msg -j outputs | jq '[.[] | select(.logical != null)] | length')
+    MONITOR_COUNT=$(niri msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
     echo "OUTPUT $(niri msg outputs)"
     duo-set-status
     echo "$(date) - MONITOR - WIFI before: ${WIFI_BEFORE}, Bluetooth before: ${BLUETOOTH_BEFORE}"
@@ -349,7 +352,7 @@ function duo-check-monitor() {
         if ((${MONITOR_COUNT} > 1)); then
             echo "$(date) - MONITOR - Disabling bottom monitor"
             niri msg output eDP-2 off
-            NEW_MONITOR_COUNT=$(niri msg -j outputs | jq '[.[] | select(.logical != null)] | length')
+            NEW_MONITOR_COUNT=$(niri msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
             if ((${NEW_MONITOR_COUNT} == 1)); then
                 MESSAGE="Disabled bottom display"
             else
@@ -378,7 +381,7 @@ function duo-check-monitor() {
             niri msg output eDP-2 position set 0 1200
             niri msg action focus-workspace 11
             niri msg action move-workspace-to-monitor-down
-            NEW_MONITOR_COUNT=$(niri msg -j outputs | jq '[.[] | select(.logical != null)] | length')
+            NEW_MONITOR_COUNT=$(niri msg -j outputs 2>/dev/null | jq '[.[] | select(.logical != null)] | length' 2>/dev/null || echo 0)
             if ((${NEW_MONITOR_COUNT} == 2)); then
                 MESSAGE="Enabled bottom display"
             else

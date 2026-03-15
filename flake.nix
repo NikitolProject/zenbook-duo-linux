@@ -37,7 +37,6 @@
                 networkmanager
                 coreutils-full
                 libnotify
-                niri
                 jq
                 (python3.withPackages (py-pkgs: with py-pkgs; [ pyusb ]))
               ];
