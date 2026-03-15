@@ -14,11 +14,22 @@ VENDOR_ID="0B05"
 USB_PRODUCT_ID="1B2C"
 BT_PRODUCT_ID="1B2D"
 
+# Find and export the Niri socket for IPC from root context
+function find-niri-socket() {
+    local sock
+    sock=$(ls -t /run/user/1000/niri.*.sock 2>/dev/null | head -n 1)
+    if [ -n "$sock" ]; then
+        export NIRI_SOCKET="$sock"
+        return 0
+    fi
+    return 1
+}
+
 # Wait for Niri to start
 echo "Waiting for Niri to initialize..."
 for i in {1..60}; do
-    if niri msg version >/dev/null 2>&1; then
-        echo "Niri is ready."
+    if find-niri-socket && niri msg version >/dev/null 2>&1; then
+        echo "Niri is ready. Socket: $NIRI_SOCKET"
         break
     fi
     sleep 1
@@ -310,6 +321,7 @@ function duo-watch-lock() {
 }
 
 function duo-check-monitor() {
+    find-niri-socket
     . "$temp/status"
     KEYBOARD_ATTACHED=false
     if lsusb -d ${VENDOR_ID}:${USB_PRODUCT_ID} >/dev/null 2>&1; then
@@ -386,6 +398,7 @@ function duo-watch-monitor() {
 }
 
 function duo-cli() {
+    find-niri-socket
     . "$temp/status"
     case "${1}" in
     pre|hibernate|shutdown)
